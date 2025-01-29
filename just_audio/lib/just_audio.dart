@@ -3598,41 +3598,74 @@ class LockCachingAudioSource extends StreamAudioSource {
 
   @override
   Future<StreamAudioResponse> request([int? start, int? end]) async {
-    final cacheFile = await this.cacheFile;
-    if (cacheFile.existsSync()) {
-      final sourceLength = cacheFile.lengthSync();
-      return StreamAudioResponse(
-        rangeRequestsSupported: true,
-        sourceLength: start != null ? sourceLength : null,
-        contentLength: (end ?? sourceLength) - (start ?? 0),
-        offset: start,
-        contentType: await _readCachedMimeType(),
-        stream: cacheFile.openRead(start, end).asBroadcastStream(),
-      );
-    }
-    final byteRangeRequest = _StreamingByteRangeRequest(start, end);
-    _requests.add(byteRangeRequest);
-    _response ??=
-        _fetch().catchError((dynamic error, StackTrace? stackTrace) async {
-      // So that we can restart later
-      _response = null;
-      // Cancel any pending request
-      for (final req in _requests) {
-        req.fail(error, stackTrace);
+    try {
+      final cacheFile = await this.cacheFile;
+
+      if (cacheFile.existsSync()) {
+        final sourceLength = cacheFile.lengthSync();
+        return StreamAudioResponse(
+          rangeRequestsSupported: true,
+          sourceLength: start != null ? sourceLength : null,
+          contentLength: (end ?? sourceLength) - (start ?? 0),
+          offset: start,
+          contentType: await _readCachedMimeType(),
+          stream: cacheFile.openRead(start, end).asBroadcastStream(),
+        );
       }
-      return Future<HttpClientResponse>.error(error as Object, stackTrace);
-    });
-    return byteRangeRequest.future.then((response) {
-      response.stream.listen((event) {}, onError: (Object e, StackTrace st) {
-        // So that we can restart later
-        _response = null;
-        // Cancel any pending request
-        for (final req in _requests) {
-          req.fail(e, st);
-        }
+
+      final byteRangeRequest = _StreamingByteRangeRequest(start, end);
+      _requests.add(byteRangeRequest);
+
+      // Start fetching if not already in progress
+      _response ??= _fetch().catchError((dynamic error, StackTrace? stackTrace) async {
+        _handleFetchError(error, stackTrace);
+        return Future<HttpClientResponse>.error(error as Object, stackTrace);
       });
-      return response;
-    });
+
+      // Await the byte range request response and handle stream errors
+      return byteRangeRequest.future.then((response) {
+        response.stream.listen((event) {}, onError: (Object e, StackTrace st) {
+          _handleFetchError(e, st);
+        });
+        return response;
+      });
+    } catch (e, stackTrace) {
+      return _handleFetchError(e, stackTrace);
+    }
+  }
+
+  Future<StreamAudioResponse> _handleFetchError(dynamic error, StackTrace? stackTrace) async {
+    _response = null; // Reset response so that future attempts can retry
+
+    // Cancel any pending requests
+    for (final req in _requests) {
+      req.fail(error, stackTrace);
+    }
+    _requests.clear();
+
+    // Log the error for debugging
+    print("Error in LockCachingAudioSource.request: $error\n$stackTrace");
+
+    // Handle specific error types
+    if (error is SocketException) {
+      print("Network error: No internet connection or server unreachable.");
+    } else if (error is HttpException) {
+      print("HTTP error: ${error.message}");
+    } else if (error is TimeoutException) {
+      print("Timeout error: Request took too long to respond.");
+    } else {
+      print("Unexpected error: $error");
+    }
+
+    // Return a 503 Service Unavailable response
+    return StreamAudioResponse(
+      rangeRequestsSupported: false,
+      sourceLength: null,
+      contentLength: null,
+      offset: null,
+      contentType: 'audio/mpeg',
+      stream: Stream<List<int>>.error(error as Object, stackTrace),
+    );
   }
 }
 
