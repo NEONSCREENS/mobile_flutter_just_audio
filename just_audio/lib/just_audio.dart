@@ -2911,12 +2911,12 @@ class LockCachingAudioSource extends StreamAudioSource {
   bool _downloading = false;
 
   LockCachingAudioSource(
-      this.uri, {
-        this.headers,
-        File? cacheFile,
-        dynamic tag,
-      })  : cacheFile =
-  cacheFile != null ? Future.value(cacheFile) : _getCacheFile(uri),
+    this.uri, {
+    this.headers,
+    File? cacheFile,
+    dynamic tag,
+  })  : cacheFile =
+            cacheFile != null ? Future.value(cacheFile) : _getCacheFile(uri),
         super(tag: tag) {
     _init();
   }
@@ -2951,11 +2951,11 @@ class LockCachingAudioSource extends StreamAudioSource {
   }
 
   static Future<File> _getCacheFile(final Uri uri) async => File(p.joinAll([
-    (await _getCacheDir()).path,
-    'remote',
-    sha256.convert(utf8.encode(uri.toString())).toString() +
-        p.extension(uri.path),
-  ]));
+        (await _getCacheDir()).path,
+        'remote',
+        sha256.convert(utf8.encode(uri.toString())).toString() +
+            p.extension(uri.path),
+      ]));
 
   Future<File> get _partialCacheFile async =>
       File('${(await cacheFile).path}.part');
@@ -2989,7 +2989,7 @@ class LockCachingAudioSource extends StreamAudioSource {
         (await _partialCacheFile).createSync(recursive: true);
         final sink = (await _partialCacheFile).openWrite();
         final sourceLength =
-        response.contentLength == -1 ? null : response.contentLength;
+            response.contentLength == -1 ? null : response.contentLength;
         final mimeType = response.headers.contentType.toString();
         final mimeFile = await _mimeFile;
         await mimeFile.writeAsString(mimeType);
@@ -3008,8 +3008,8 @@ class LockCachingAudioSource extends StreamAudioSource {
           final newPercentProgress = (sourceLength == null)
               ? 0
               : (sourceLength == 0)
-              ? 100
-              : (100 * _progress ~/ sourceLength);
+                  ? 100
+                  : (100 * _progress ~/ sourceLength);
           updateProgress(newPercentProgress);
           sink.add(data);
         });
@@ -3026,14 +3026,16 @@ class LockCachingAudioSource extends StreamAudioSource {
             return Future.error(e, stack);
           }
 
-          await Future<HttpClientResponse>.delayed(Duration(milliseconds: 500 * (attempt + 1)));
+          await Future<HttpClientResponse>.delayed(
+              Duration(milliseconds: 500 * (attempt + 1)));
         } else {
           return Future.error(e, stack);
         }
       }
     }
 
-    throw Exception('Failed to fetch after $retries attempts.');
+    final exception = Exception('Failed to fetch after $retries attempts.');
+    return Future.error(exception, StackTrace.current);
   }
 
   @override
@@ -3069,7 +3071,8 @@ class LockCachingAudioSource extends StreamAudioSource {
     }
   }
 
-  Future<StreamAudioResponse> _handleFetchError(Object error, StackTrace? stackTrace) async {
+  Future<StreamAudioResponse> _handleFetchError(
+      Object error, StackTrace? stackTrace) async {
     _response = null;
     for (final request in _requests) {
       request.fail(error, stackTrace);
