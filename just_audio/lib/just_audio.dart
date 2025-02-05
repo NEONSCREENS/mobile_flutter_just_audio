@@ -2939,6 +2939,7 @@ class LockCachingAudioSource extends StreamAudioSource {
   /// Emits the current download progress as a double value from 0.0 (nothing
   /// downloaded) to 1.0 (download complete).
   Stream<double> get downloadProgressStream => _downloadProgressSubject.stream;
+
   /// Removes the underlying cache files. It is an error to clear the cache
   /// while a download is in progress.
   Future<void> clearCache() async {
@@ -3049,8 +3050,10 @@ class LockCachingAudioSource extends StreamAudioSource {
             return Future.error(e, stack);
           }
 
-          await Future<HttpClientResponse>.delayed(
-              Duration(milliseconds: 500 * (attempt + 1)));
+          await Future<void>.delayed(
+            Duration(milliseconds: 500 * (attempt + 1)),
+            () {},
+          );
         } else {
           return Future.error(e, stack);
         }
