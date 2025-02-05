@@ -3235,15 +3235,15 @@ class LockCachingAudioSource extends StreamAudioSource {
     final byteRangeRequest = _StreamingByteRangeRequest(start, end);
     _requests.add(byteRangeRequest);
 
-    _response ??= _fetch().catchError(_handleFailure);
+    _response ??= _fetch().catchError(_cancelRequests);
 
     return byteRangeRequest.future.then((response) {
-      response.stream.listen((_) {}, onError: _handleFailure);
+      response.stream.listen((_) {}, onError: _cancelRequests);
       return response;
     });
   }
 
-  Future<HttpClientResponse> _handleFailure(Object e, StackTrace? st) {
+  Future<HttpClientResponse> _cancelRequests(Object e, StackTrace? st) {
     _response = null;
     for (final req in _requests) {
       req.fail(e, st);

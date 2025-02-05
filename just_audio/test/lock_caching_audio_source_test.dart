@@ -98,7 +98,7 @@ void main() {
 
       try {
         await source.request();
-        fail('Should have thrown');
+        fail('Should not come here');
       } catch (e) {
         expect(e, isA<SocketException>());
       }
