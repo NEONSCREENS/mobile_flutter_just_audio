@@ -98,7 +98,7 @@ class AudioPlayer {
   StreamSubscription<PlayerDataMessage>? _playerDataSubscription;
 
   StreamSubscription<AndroidAudioAttributes>?
-      _androidAudioAttributesSubscription;
+  _androidAudioAttributesSubscription;
   StreamSubscription<void>? _becomingNoisyEventSubscription;
   StreamSubscription<AudioInterruptionEvent>? _interruptionEventSubscription;
 
@@ -132,9 +132,8 @@ class AudioPlayer {
   final _shuffleModeEnabledSubject = BehaviorSubject.seeded(false);
   final _androidAudioSessionIdSubject = BehaviorSubject<int?>();
   final _positionDiscontinuitySubject =
-      PublishSubject<PositionDiscontinuity>(sync: true);
+  PublishSubject<PositionDiscontinuity>(sync: true);
   var _seeking = false;
-
   // ignore: close_sinks
   BehaviorSubject<Duration>? _positionSubject;
   bool _automaticallyWaitsToMinimizeStalling = true;
@@ -210,21 +209,15 @@ class AudioPlayer {
     _processingStateSubject.addStream(playbackEventStream
         .map((event) => event.processingState)
         .distinct()
-        .handleError((Object err, StackTrace stackTrace) {
-      /* noop */
-    }));
+        .handleError((Object err, StackTrace stackTrace) {/* noop */}));
     _bufferedPositionSubject.addStream(playbackEventStream
         .map((event) => event.bufferedPosition)
         .distinct()
-        .handleError((Object err, StackTrace stackTrace) {
-      /* noop */
-    }));
+        .handleError((Object err, StackTrace stackTrace) {/* noop */}));
     _icyMetadataSubject.addStream(playbackEventStream
         .map((event) => event.icyMetadata)
         .distinct()
-        .handleError((Object err, StackTrace stackTrace) {
-      /* noop */
-    }));
+        .handleError((Object err, StackTrace stackTrace) {/* noop */}));
     playbackEventStream.pairwise().listen((pair) {
       final prev = pair.first;
       final curr = pair.last;
@@ -256,15 +249,11 @@ class AudioPlayer {
     _currentIndexSubject.addStream(playbackEventStream
         .map((event) => event.currentIndex)
         .distinct()
-        .handleError((Object err, StackTrace stackTrace) {
-      /* noop */
-    }));
+        .handleError((Object err, StackTrace stackTrace) {/* noop */}));
     _androidAudioSessionIdSubject.addStream(playbackEventStream
         .map((event) => event.androidAudioSessionId)
         .distinct()
-        .handleError((Object err, StackTrace stackTrace) {
-      /* noop */
-    }));
+        .handleError((Object err, StackTrace stackTrace) {/* noop */}));
     _sequenceStateSubject.addStream(Rx.combineLatest5<List<IndexedAudioSource>?,
         List<int>?, int?, bool, LoopMode, SequenceState?>(
       sequenceStream,
@@ -272,7 +261,7 @@ class AudioPlayer {
       currentIndexStream,
       shuffleModeEnabledStream,
       loopModeStream,
-      (sequence, shuffleIndices, currentIndex, shuffleModeEnabled, loopMode) {
+          (sequence, shuffleIndices, currentIndex, shuffleModeEnabled, loopMode) {
         if (sequence == null) return null;
         if (shuffleIndices == null) return null;
         currentIndex ??= 0;
@@ -285,18 +274,14 @@ class AudioPlayer {
           loopMode,
         );
       },
-    ).distinct().handleError((Object err, StackTrace stackTrace) {
-      /* noop */
-    }));
+    ).distinct().handleError((Object err, StackTrace stackTrace) {/* noop */}));
     _playerStateSubject.addStream(
         Rx.combineLatest2<bool, PlaybackEvent, PlayerState>(
-                playingStream,
-                playbackEventStream,
+            playingStream,
+            playbackEventStream,
                 (playing, event) => PlayerState(playing, event.processingState))
             .distinct()
-            .handleError((Object err, StackTrace stackTrace) {
-      /* noop */
-    }));
+            .handleError((Object err, StackTrace stackTrace) {/* noop */}));
     _shuffleModeEnabledSubject.add(false);
     _loopModeSubject.add(LoopMode.off);
     _setPlatformActive(false, force: true)
@@ -317,47 +302,47 @@ class AudioPlayer {
       AudioSession.instance.then((session) {
         _becomingNoisyEventSubscription =
             session.becomingNoisyEventStream.listen((_) {
-          pause();
-        });
+              pause();
+            });
         _interruptionEventSubscription =
             session.interruptionEventStream.listen((event) {
-          if (event.begin) {
-            switch (event.type) {
-              case AudioInterruptionType.duck:
-                assert(_isAndroid());
-                if (session.androidAudioAttributes!.usage ==
-                    AndroidAudioUsage.game) {
-                  setVolume(volume / 2);
+              if (event.begin) {
+                switch (event.type) {
+                  case AudioInterruptionType.duck:
+                    assert(_isAndroid());
+                    if (session.androidAudioAttributes!.usage ==
+                        AndroidAudioUsage.game) {
+                      setVolume(volume / 2);
+                    }
+                    _playInterrupted = false;
+                    break;
+                  case AudioInterruptionType.pause:
+                  case AudioInterruptionType.unknown:
+                    if (playing) {
+                      pause();
+                      // Although pause is async and sets _playInterrupted = false,
+                      // this is done in the sync portion.
+                      _playInterrupted = true;
+                    }
+                    break;
                 }
-                _playInterrupted = false;
-                break;
-              case AudioInterruptionType.pause:
-              case AudioInterruptionType.unknown:
-                if (playing) {
-                  pause();
-                  // Although pause is async and sets _playInterrupted = false,
-                  // this is done in the sync portion.
-                  _playInterrupted = true;
+              } else {
+                switch (event.type) {
+                  case AudioInterruptionType.duck:
+                    assert(_isAndroid());
+                    setVolume(min(1.0, volume * 2));
+                    _playInterrupted = false;
+                    break;
+                  case AudioInterruptionType.pause:
+                    if (_playInterrupted) play();
+                    _playInterrupted = false;
+                    break;
+                  case AudioInterruptionType.unknown:
+                    _playInterrupted = false;
+                    break;
                 }
-                break;
-            }
-          } else {
-            switch (event.type) {
-              case AudioInterruptionType.duck:
-                assert(_isAndroid());
-                setVolume(min(1.0, volume * 2));
-                _playInterrupted = false;
-                break;
-              case AudioInterruptionType.pause:
-                if (_playInterrupted) play();
-                _playInterrupted = false;
-                break;
-              case AudioInterruptionType.unknown:
-                _playInterrupted = false;
-                break;
-            }
-          }
-        });
+              }
+            });
       });
     }
     _removeOldAssetCacheDir();
