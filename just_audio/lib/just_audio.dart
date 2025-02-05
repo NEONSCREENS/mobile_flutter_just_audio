@@ -2896,21 +2896,10 @@ class StreamAudioResponse {
   });
 }
 
-/// Creates a [LockCachingAudioSource] to that provides [uri] to the player
-/// while simultaneously caching it to [cacheFile]. If no cache file is
-/// supplied, just_audio will allocate a cache file internally.
-///
-/// If headers are set, just_audio will create a cleartext local HTTP proxy on
-/// your device to forward HTTP requests with headers included.
 @experimental
-
-/// An experimental audio source that downloads an audio file from [uri] while
-/// caching it to a file on disk. During the download, any byte-range requests
-/// will be fulfilled from the partial cache file if available. If the download
-/// fails, pending requests are failed accordingly.
-///
-/// If [headers] are provided the download is performed through a local HTTP
-/// proxy (which must be configured as described in the documentation).
+/// This is an experimental audio source that caches the audio while it is being
+/// downloaded and played. It is not supported on platforms that do not provide
+/// access to the file system (e.g. web).
 @experimental
 class LockCachingAudioSource extends StreamAudioSource {
   Future<HttpClientResponse>? _response;
@@ -2936,8 +2925,7 @@ class LockCachingAudioSource extends StreamAudioSource {
   }
 
   Future<void> _init() async {
-    final file = await this.cacheFile;
-    // If the cache file already exists, the progress is 100%
+    final file = await cacheFile;
     _downloadProgressSubject.add((await file.exists()) ? 1.0 : 0.0);
   }
 
@@ -2948,11 +2936,12 @@ class LockCachingAudioSource extends StreamAudioSource {
     return await file.exists() ? AudioSource.uri(Uri.file(file.path)) : this;
   }
 
-  /// Emits the current download progress as a stream of double values from
-  /// 0.0 (nothing downloaded) to 1.0 (download complete).
+  /// Emits the current download progress as a double value from 0.0 (nothing
+  /// downloaded) to 1.0 (download complete).
   Stream<double> get downloadProgressStream => _downloadProgressSubject.stream;
 
-  /// Clears the cache. It is an error to call this while a download is in progress.
+  /// Removes the underlying cache files. It is an error to clear the cache
+  /// while a download is in progress.
   Future<void> clearCache() async {
     if (_downloading) {
       throw Exception("Cannot clear cache while download is in progress");
@@ -2970,7 +2959,7 @@ class LockCachingAudioSource extends StreamAudioSource {
     _downloadProgressSubject.add(0.0);
   }
 
-  /// Returns a cache file for the given [uri] (with a hashed filename and proper extension).
+  /// Get file for caching [uri] with proper extension
   static Future<File> _getCacheFile(final Uri uri) async => File(p.joinAll([
         (await _getCacheDir()).path,
         'remote',
@@ -2983,7 +2972,10 @@ class LockCachingAudioSource extends StreamAudioSource {
   Future<File> get _partialCacheFile async =>
       File('${(await cacheFile).path}.part');
 
-  /// Returns a file to store the original MIME type of the downloaded audio.
+  /// We use this to record the original content type of the downloaded audio.
+  /// NOTE: We could instead rely on the cache file extension, but the original
+  /// URL might not provide a correct extension. As a fallback, we could map the
+  /// MIME type to an extension but we will need a complete dictionary.
   Future<File> get _mimeFile async => File('${(await cacheFile).path}.mime');
 
   Future<String> _readCachedMimeType() async {
@@ -2995,9 +2987,17 @@ class LockCachingAudioSource extends StreamAudioSource {
     }
   }
 
-  /// Downloads the entire audio file into the cache. This method uses retry logic
-  /// and writes the data first to the partial cache file. On successful download,
-  /// the partial file is renamed to the final cache file.
+  /// Start downloading the whole audio file to the cache and fulfill byte-range
+  /// requests during the download. There are 3 scenarios:
+  ///
+  /// 1. If the byte range request falls entirely within the cache region, it is
+  /// fulfilled from the cache.
+  /// 2. If the byte range request overlaps the cached region, the first part is
+  /// fulfilled from the cache, and the region beyond the cache is fulfilled
+  /// from a memory buffer of the downloaded data.
+  /// 3. If the byte range request is entirely outside the cached region, a
+  /// separate HTTP request is made to fulfill it while the download of the
+  /// entire file continues in parallel.
   Future<HttpClientResponse> _fetch() async {
     _downloading = true;
     final file = await cacheFile;
@@ -3093,7 +3093,9 @@ class LockCachingAudioSource extends StreamAudioSource {
 
     _response ??=
         _fetch().catchError((dynamic error, StackTrace? stackTrace) async {
+      // So that we can restart later
       _response = null;
+      // Cancel any pending request
       for (final req in _requests) {
         req.fail(error, stackTrace);
       }
@@ -3102,7 +3104,9 @@ class LockCachingAudioSource extends StreamAudioSource {
 
     return byteRangeRequest.future.then((response) {
       response.stream.listen((event) {}, onError: (Object e, StackTrace st) {
+        // So that we can restart later
         _response = null;
+        // Cancel any pending request
         for (final req in _requests) {
           req.fail(e, st);
         }
