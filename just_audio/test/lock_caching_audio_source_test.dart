@@ -12,8 +12,8 @@ File buildCache(String fileName, Directory tempDir) {
   return File(cacheFilePath);
 }
 
-void mockHttpClient({List<int> responseData = const []}) {
-  final httpClient = FakeHttpClient(responseData: responseData);
+void mockHttpClient({List<int> responseData = const [], Object? error}) {
+  final httpClient = FakeHttpClient(responseData: responseData, error: error);
   HttpOverrides.global = FakeHttpOverrides(httpClient);
 }
 
@@ -26,12 +26,17 @@ void main() {
 
   setUp(() async {
     cacheDir = await Directory.systemTemp.createTemp('lock_caching_test');
-    print('Cache dir: ${cacheDir.path}');
+
+    // ignore: avoid_print
+    print('Created cache dir: ${cacheDir.path}');
   });
 
   tearDown(() async {
     if (await cacheDir.exists()) {
       await cacheDir.delete(recursive: true);
+
+      // ignore: avoid_print
+      print('Deleted cache dir: ${cacheDir.path}');
     }
   });
 
@@ -81,7 +86,23 @@ void main() {
       );
     });
 
-    test('Getting a timeout error from the client continues', () {});
+    test('Getting a timeout error from the client it finishes', () async {
+      mockHttpClient(error: const SocketException('any'));
+
+      final cacheFile = buildCache('timeout_test.mp3', cacheDir);
+      final source = LockCachingAudioSource(
+        Uri.parse('https://any.com/timeout_test.mp3'),
+        cacheFile: cacheFile,
+        retryTimes: 0,
+      );
+
+      try {
+        await source.request();
+        fail('Should have thrown');
+      } catch (e) {
+        expect(e, isA<SocketException>());
+      }
+    });
 
     test('Request returns data from partial file during download', () async {
       final responseData = List<int>.generate(1024, (i) => i % 256);

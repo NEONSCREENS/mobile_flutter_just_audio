@@ -45,18 +45,25 @@ class FakeHttpHeaders implements HttpHeaders {
 
 /// A fake HTTP client that implements HttpClient.
 class FakeHttpClient implements HttpClient {
-  final List<int> responseData;
-  final int statusCode;
-  final int contentLength;
-
   FakeHttpClient({
     required this.responseData,
     this.statusCode = 200,
     int? contentLength,
+    this.error,
   }) : contentLength = contentLength ?? responseData.length;
+
+  final List<int> responseData;
+  final int statusCode;
+  final int contentLength;
+  final Object? error;
 
   @override
   Future<HttpClientRequest> getUrl(Uri url) async {
+    final error = this.error;
+    if (error != null) {
+      return Future.error(error);
+    }
+
     return FakeHttpClientRequest(url, responseData, statusCode, contentLength);
   }
 
