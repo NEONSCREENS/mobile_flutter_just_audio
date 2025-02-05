@@ -98,7 +98,7 @@ class AudioPlayer {
   StreamSubscription<PlayerDataMessage>? _playerDataSubscription;
 
   StreamSubscription<AndroidAudioAttributes>?
-  _androidAudioAttributesSubscription;
+      _androidAudioAttributesSubscription;
   StreamSubscription<void>? _becomingNoisyEventSubscription;
   StreamSubscription<AudioInterruptionEvent>? _interruptionEventSubscription;
 
@@ -132,7 +132,7 @@ class AudioPlayer {
   final _shuffleModeEnabledSubject = BehaviorSubject.seeded(false);
   final _androidAudioSessionIdSubject = BehaviorSubject<int?>();
   final _positionDiscontinuitySubject =
-  PublishSubject<PositionDiscontinuity>(sync: true);
+      PublishSubject<PositionDiscontinuity>(sync: true);
   var _seeking = false;
 
   // ignore: close_sinks
@@ -272,7 +272,7 @@ class AudioPlayer {
       currentIndexStream,
       shuffleModeEnabledStream,
       loopModeStream,
-          (sequence, shuffleIndices, currentIndex, shuffleModeEnabled, loopMode) {
+      (sequence, shuffleIndices, currentIndex, shuffleModeEnabled, loopMode) {
         if (sequence == null) return null;
         if (shuffleIndices == null) return null;
         currentIndex ??= 0;
@@ -290,13 +290,13 @@ class AudioPlayer {
     }));
     _playerStateSubject.addStream(
         Rx.combineLatest2<bool, PlaybackEvent, PlayerState>(
-            playingStream,
-            playbackEventStream,
+                playingStream,
+                playbackEventStream,
                 (playing, event) => PlayerState(playing, event.processingState))
             .distinct()
             .handleError((Object err, StackTrace stackTrace) {
-          /* noop */
-        }));
+      /* noop */
+    }));
     _shuffleModeEnabledSubject.add(false);
     _loopModeSubject.add(LoopMode.off);
     _setPlatformActive(false, force: true)
@@ -317,47 +317,47 @@ class AudioPlayer {
       AudioSession.instance.then((session) {
         _becomingNoisyEventSubscription =
             session.becomingNoisyEventStream.listen((_) {
-              pause();
-            });
+          pause();
+        });
         _interruptionEventSubscription =
             session.interruptionEventStream.listen((event) {
-              if (event.begin) {
-                switch (event.type) {
-                  case AudioInterruptionType.duck:
-                    assert(_isAndroid());
-                    if (session.androidAudioAttributes!.usage ==
-                        AndroidAudioUsage.game) {
-                      setVolume(volume / 2);
-                    }
-                    _playInterrupted = false;
-                    break;
-                  case AudioInterruptionType.pause:
-                  case AudioInterruptionType.unknown:
-                    if (playing) {
-                      pause();
-                      // Although pause is async and sets _playInterrupted = false,
-                      // this is done in the sync portion.
-                      _playInterrupted = true;
-                    }
-                    break;
+          if (event.begin) {
+            switch (event.type) {
+              case AudioInterruptionType.duck:
+                assert(_isAndroid());
+                if (session.androidAudioAttributes!.usage ==
+                    AndroidAudioUsage.game) {
+                  setVolume(volume / 2);
                 }
-              } else {
-                switch (event.type) {
-                  case AudioInterruptionType.duck:
-                    assert(_isAndroid());
-                    setVolume(min(1.0, volume * 2));
-                    _playInterrupted = false;
-                    break;
-                  case AudioInterruptionType.pause:
-                    if (_playInterrupted) play();
-                    _playInterrupted = false;
-                    break;
-                  case AudioInterruptionType.unknown:
-                    _playInterrupted = false;
-                    break;
+                _playInterrupted = false;
+                break;
+              case AudioInterruptionType.pause:
+              case AudioInterruptionType.unknown:
+                if (playing) {
+                  pause();
+                  // Although pause is async and sets _playInterrupted = false,
+                  // this is done in the sync portion.
+                  _playInterrupted = true;
                 }
-              }
-            });
+                break;
+            }
+          } else {
+            switch (event.type) {
+              case AudioInterruptionType.duck:
+                assert(_isAndroid());
+                setVolume(min(1.0, volume * 2));
+                _playInterrupted = false;
+                break;
+              case AudioInterruptionType.pause:
+                if (_playInterrupted) play();
+                _playInterrupted = false;
+                break;
+              case AudioInterruptionType.unknown:
+                _playInterrupted = false;
+                break;
+            }
+          }
+        });
       });
     }
     _removeOldAssetCacheDir();
