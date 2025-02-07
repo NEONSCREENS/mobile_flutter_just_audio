@@ -49,20 +49,23 @@ class FakeHttpClient implements HttpClient {
     required this.responseData,
     this.statusCode = 200,
     int? contentLength,
-    this.error,
+    this.error = const {},
   }) : contentLength = contentLength ?? responseData.length;
 
   final List<int> responseData;
   final int statusCode;
   final int contentLength;
-  final Object? error;
+  final Map<int, Object> error;
+  int requestCount = 0;
 
   @override
   Future<HttpClientRequest> getUrl(Uri url) async {
-    final error = this.error;
+    final error = this.error[requestCount];
+    requestCount++;
     if (error != null) {
       return Future.error(error);
     }
+
 
     return FakeHttpClientRequest(url, responseData, statusCode, contentLength);
   }
