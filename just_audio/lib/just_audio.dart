@@ -2910,6 +2910,7 @@ class LockCachingAudioSource extends StreamAudioSource {
   final _downloadProgressSubject = BehaviorSubject<double>();
   bool _downloading = false;
   final int retryTimes;
+  final int retryDelayMillis;
 
   /// Creates a [LockCachingAudioSource] to that provides [uri] to the player
   /// while simultaneously caching it to [cacheFile]. If no cache file is
@@ -2923,6 +2924,7 @@ class LockCachingAudioSource extends StreamAudioSource {
     File? cacheFile,
     dynamic tag,
     this.retryTimes = 3,
+    this.retryDelayMillis = 500,
   })  : cacheFile =
             cacheFile != null ? Future.value(cacheFile) : _getCacheFile(uri),
         super(tag: tag) {
@@ -3198,7 +3200,8 @@ class LockCachingAudioSource extends StreamAudioSource {
 
         if (error is SocketException || error is TimeoutException) {
           if (attempt < retryTimes) {
-            final backOfDuration = Duration(milliseconds: 500 * (attempt + 1));
+            final backOfDuration =
+                Duration(milliseconds: retryDelayMillis * (attempt + 1));
             await Future<void>.delayed(backOfDuration);
 
             continue;
@@ -3235,10 +3238,15 @@ class LockCachingAudioSource extends StreamAudioSource {
     final byteRangeRequest = _StreamingByteRangeRequest(start, end);
     _requests.add(byteRangeRequest);
 
-    _response ??= _fetch().catchError(_cancelRequests);
+    _response ??= _fetch().catchError((Object e, StackTrace st) {
+      return _cancelRequests(e, st);
+    });
 
     return byteRangeRequest.future.then((response) {
-      response.stream.listen((_) {}, onError: _cancelRequests);
+      response.stream.listen((_) {}, onError: (Object e, StackTrace st) {
+        return _cancelRequests(e, st);
+      });
+
       return response;
     });
   }

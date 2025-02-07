@@ -12,7 +12,10 @@ File buildCache(String fileName, Directory tempDir) {
   return File(cacheFilePath);
 }
 
-void mockHttpClient({List<int> responseData = const [], Object? error}) {
+void mockHttpClient({
+  List<int> responseData = const [],
+  Map<int, Object> error = const {},
+}) {
   final httpClient = FakeHttpClient(responseData: responseData, error: error);
   HttpOverrides.global = FakeHttpOverrides(httpClient);
 }
@@ -86,22 +89,59 @@ void main() {
       );
     });
 
-    test('Getting a timeout error from the client it finishes', () async {
-      mockHttpClient(error: const SocketException('any'));
+    group('retry on error', (){
+      test('Getting a timeout error retries to fetch the complete content', () async {
+        final responseData = List<int>.generate(1024, (i) => i % 256);
+        mockHttpClient(
+          responseData: responseData,
+          error: {
+            0: const SocketException('any'),
+          },
+        );
 
-      final cacheFile = buildCache('timeout_test.mp3', cacheDir);
-      final source = LockCachingAudioSource(
-        Uri.parse('https://any.com/timeout_test.mp3'),
-        cacheFile: cacheFile,
-        retryTimes: 0,
-      );
+        final cacheFile = buildCache('timeout_test.mp3', cacheDir);
+        final source = LockCachingAudioSource(
+          Uri.parse('https://any.com/timeout_test.mp3'),
+          cacheFile: cacheFile,
+          retryTimes: 1,
+          retryDelayMillis: 0,
+        );
 
-      try {
-        await source.request();
-        fail('Should not come here');
-      } catch (e) {
-        expect(e, isA<SocketException>());
-      }
+        final response = await source.request();
+
+        final collected = <int>[];
+        await response.stream.forEach(collected.addAll);
+        expect(collected.length, equals(responseData.length));
+
+        expect(await cacheFile.length(), equals(responseData.length));
+      });
+
+      test('If it gets a timeout after the retry was done fail', () async {
+        final responseData = List<int>.generate(1024, (i) => i % 256);
+        mockHttpClient(
+          responseData: responseData,
+          error: {
+            0: const SocketException('1'),
+            1: const SocketException('2'),
+          },
+        );
+
+        final cacheFile = buildCache('timeout_test.mp3', cacheDir);
+        final source = LockCachingAudioSource(
+          Uri.parse('https://any.com/timeout_test.mp3'),
+          cacheFile: cacheFile,
+          retryTimes: 1,
+          retryDelayMillis: 0,
+        );
+
+        try {
+          await source.request();
+          fail('Should have thrown the exception!');
+        } catch (e) {
+          expect(e, isA<SocketException>());
+          rethrow; // Let the test framework handle the error
+        }
+      });
     });
 
     test('Request returns data from partial file during download', () async {
