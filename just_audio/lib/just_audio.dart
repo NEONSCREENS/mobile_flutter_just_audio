@@ -2998,12 +2998,19 @@ class ConcatenatingAudioSource extends AudioSource {
         if (player._active) {
           await audioSource._onLoad();
         }
-        await (await player._platform).concatenatingInsertAll(
-            ConcatenatingInsertAllRequest(
-                id: _id,
-                index: index,
-                children: [audioSource._toMessage()],
-                shuffleOrder: List.of(_shuffleOrder.indices)));
+        try {
+          await (await player._platform).concatenatingInsertAll(
+              ConcatenatingInsertAllRequest(
+                  id: _id,
+                  index: index,
+                  children: [audioSource._toMessage()],
+                  shuffleOrder: List.of(_shuffleOrder.indices)));
+        } catch (e) {
+          children.removeAt(index);
+          _shuffleOrder.removeRange(index, index + 1);
+          await player._broadcastSequence();
+          rethrow;
+        }
       }
     });
   }
@@ -3020,12 +3027,19 @@ class ConcatenatingAudioSource extends AudioSource {
         if (player._active) {
           await audioSource._onLoad();
         }
-        await (await player._platform).concatenatingInsertAll(
-            ConcatenatingInsertAllRequest(
-                id: _id,
-                index: index,
-                children: [audioSource._toMessage()],
-                shuffleOrder: List.of(_shuffleOrder.indices)));
+        try {
+          await (await player._platform).concatenatingInsertAll(
+              ConcatenatingInsertAllRequest(
+                  id: _id,
+                  index: index,
+                  children: [audioSource._toMessage()],
+                  shuffleOrder: List.of(_shuffleOrder.indices)));
+        } catch (e) {
+          children.removeAt(index);
+          _shuffleOrder.removeRange(index, index + 1);
+          await player._broadcastSequence();
+          rethrow;
+        }
       }
     });
   }
@@ -3047,12 +3061,20 @@ class ConcatenatingAudioSource extends AudioSource {
             await child._onLoad();
           }
         }
-        await (await player._platform).concatenatingInsertAll(
-            ConcatenatingInsertAllRequest(
-                id: _id,
-                index: index,
-                children: children.map((child) => child._toMessage()).toList(),
-                shuffleOrder: List.of(_shuffleOrder.indices)));
+        try {
+          await (await player._platform).concatenatingInsertAll(
+              ConcatenatingInsertAllRequest(
+                  id: _id,
+                  index: index,
+                  children:
+                      children.map((child) => child._toMessage()).toList(),
+                  shuffleOrder: List.of(_shuffleOrder.indices)));
+        } catch (e) {
+          this.children.removeRange(index, index + children.length);
+          _shuffleOrder.removeRange(index, index + children.length);
+          await player._broadcastSequence();
+          rethrow;
+        }
       }
     });
   }
@@ -3073,12 +3095,20 @@ class ConcatenatingAudioSource extends AudioSource {
             await child._onLoad();
           }
         }
-        await (await player._platform).concatenatingInsertAll(
-            ConcatenatingInsertAllRequest(
-                id: _id,
-                index: index,
-                children: children.map((child) => child._toMessage()).toList(),
-                shuffleOrder: List.of(_shuffleOrder.indices)));
+        try {
+          await (await player._platform).concatenatingInsertAll(
+              ConcatenatingInsertAllRequest(
+                  id: _id,
+                  index: index,
+                  children:
+                      children.map((child) => child._toMessage()).toList(),
+                  shuffleOrder: List.of(_shuffleOrder.indices)));
+        } catch (e) {
+          this.children.removeRange(index, index + children.length);
+          _shuffleOrder.removeRange(index, index + children.length);
+          await player._broadcastSequence();
+          rethrow;
+        }
       }
     });
   }
@@ -3087,17 +3117,24 @@ class ConcatenatingAudioSource extends AudioSource {
   /// [ConcatenatingAudioSource] has already been loaded.
   Future<void> removeAt(int index) {
     return _lock.synchronized(() async {
-      children.removeAt(index);
+      final removedChild = children.removeAt(index);
       _shuffleOrder.removeRange(index, index + 1);
       final player = _player;
       if (player != null) {
         await player._broadcastSequence();
-        await (await player._platform).concatenatingRemoveRange(
-            ConcatenatingRemoveRangeRequest(
-                id: _id,
-                startIndex: index,
-                endIndex: index + 1,
-                shuffleOrder: List.of(_shuffleOrder.indices)));
+        try {
+          await (await player._platform).concatenatingRemoveRange(
+              ConcatenatingRemoveRangeRequest(
+                  id: _id,
+                  startIndex: index,
+                  endIndex: index + 1,
+                  shuffleOrder: List.of(_shuffleOrder.indices)));
+        } catch (e) {
+          children.insert(index, removedChild);
+          _shuffleOrder.insert(index, 1);
+          await player._broadcastSequence();
+          rethrow;
+        }
       }
     });
   }
@@ -3106,17 +3143,25 @@ class ConcatenatingAudioSource extends AudioSource {
   /// exclusive.
   Future<void> removeRange(int start, int end) {
     return _lock.synchronized(() async {
+      final removedChildren = children.sublist(start, end);
       children.removeRange(start, end);
       _shuffleOrder.removeRange(start, end);
       final player = _player;
       if (player != null) {
         await player._broadcastSequence();
-        await (await player._platform).concatenatingRemoveRange(
-            ConcatenatingRemoveRangeRequest(
-                id: _id,
-                startIndex: start,
-                endIndex: end,
-                shuffleOrder: List.of(_shuffleOrder.indices)));
+        try {
+          await (await player._platform).concatenatingRemoveRange(
+              ConcatenatingRemoveRangeRequest(
+                  id: _id,
+                  startIndex: start,
+                  endIndex: end,
+                  shuffleOrder: List.of(_shuffleOrder.indices)));
+        } catch (e) {
+          children.insertAll(start, removedChildren);
+          _shuffleOrder.insert(start, removedChildren.length);
+          await player._broadcastSequence();
+          rethrow;
+        }
       }
     });
   }
@@ -3130,12 +3175,21 @@ class ConcatenatingAudioSource extends AudioSource {
       final player = _player;
       if (player != null) {
         await player._broadcastSequence();
-        await (await player._platform).concatenatingMove(
-            ConcatenatingMoveRequest(
-                id: _id,
-                currentIndex: currentIndex,
-                newIndex: newIndex,
-                shuffleOrder: List.of(_shuffleOrder.indices)));
+        try {
+          await (await player._platform).concatenatingMove(
+              ConcatenatingMoveRequest(
+                  id: _id,
+                  currentIndex: currentIndex,
+                  newIndex: newIndex,
+                  shuffleOrder: List.of(_shuffleOrder.indices)));
+        } catch (e) {
+          // Reverse the move
+          children.insert(currentIndex, children.removeAt(newIndex));
+          _shuffleOrder.removeRange(newIndex, newIndex + 1);
+          _shuffleOrder.insert(currentIndex, 1);
+          await player._broadcastSequence();
+          rethrow;
+        }
       }
     });
   }
