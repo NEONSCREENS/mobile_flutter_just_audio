@@ -12,9 +12,19 @@ export 'package:audio_service/audio_service.dart' show MediaItem;
 
 late SwitchAudioHandler _audioHandler;
 late JustAudioPlatform _platform;
+final _mediaSessionStops = StreamController<void>.broadcast();
 
 /// Provides the [init] method to initialise just_audio for background playback.
 class JustAudioBackground {
+  /// Emits each time the media session asks the player to stop: the Stop key
+  /// of a remote, a stop from the system UI, or a dismissed notification.
+  ///
+  /// The stop itself does nothing to the player, see
+  /// [_PlayerAudioHandler.stop]. An app that wants such a request to end
+  /// playback listens here and calls `AudioPlayer.stop` or `pause` itself, so
+  /// that what it intends and what the player does stay the same thing.
+  static Stream<void> get mediaSessionStops => _mediaSessionStops.stream;
+
   /// Initialise just_audio for background playback. This should be called from
   /// your app's `main` method. e.g.:
   ///
@@ -187,9 +197,7 @@ class _JustAudioPlayer extends AudioPlayerPlatform {
 
   PlaybackState get playbackState => _audioHandler.playbackState.nvalue!;
 
-  Future<void> release() async {
-    await _audioHandler.stop();
-  }
+  Future<void> release() => _playerAudioHandler.release();
 
   @override
   Stream<PlaybackEventMessage> get playbackEventMessageStream =>
@@ -705,8 +713,27 @@ class _PlayerAudioHandler extends BaseAudioHandler
             min(ShuffleModeMessage.values.length - 1, shuffleMode.index)]));
   }
 
+  /// A stop from the media session. It does not touch the native player.
+  ///
+  /// Before, this method released the native player, and it had two callers:
+  /// the plugin, to remove a player, and audio_service, for every stop the
+  /// media session received. The second one is not under the app's control.
+  /// On Android the system UI sends a stop when it dismisses the media
+  /// controls of a cancelled notification, a moment after a source error. By
+  /// then the app has prepared a new native player, and the stop released
+  /// that one instead: no error, nothing loaded, and playWhenReady still
+  /// true, so the app could not tell and stayed silent for hours.
+  ///
+  /// The request is published on [JustAudioBackground.mediaSessionStops] and
+  /// the app decides. Removing a player is [release].
   @override
-  Future<void> stop() => _lock.synchronized(() async {
+  Future<void> stop() async {
+    _mediaSessionStops.add(null);
+  }
+
+  /// Releases the native player. For the plugin only, when just_audio
+  /// disposes its platform.
+  Future<void> release() => _lock.synchronized(() async {
         final player = _playerCompleter.value;
         if (player == null) return;
         _updatePosition();
@@ -765,10 +792,11 @@ class _PlayerAudioHandler extends BaseAudioHandler
 
   /// Broadcasts the current state to all clients.
   void _broadcastState() {
+    // No stop control: a stop from the media session is not acted on, see
+    // [stop], so the notification must not offer one.
     final controls = [
       if (hasPrevious) MediaControl.skipToPrevious,
       if (_playing) MediaControl.pause else MediaControl.play,
-      MediaControl.stop,
       if (hasNext) MediaControl.skipToNext,
     ];
     playbackState.add(playbackState.nvalue!.copyWith(
@@ -778,9 +806,7 @@ class _PlayerAudioHandler extends BaseAudioHandler
         MediaAction.seekForward,
         MediaAction.seekBackward,
       },
-      androidCompactActionIndices: List.generate(controls.length, (i) => i)
-          .where((i) => controls[i].action != MediaAction.stop)
-          .toList(),
+      androidCompactActionIndices: List.generate(controls.length, (i) => i),
       processingState: _justAudioEvent.errorCode != null
           ? AudioProcessingState.error
           : const {
