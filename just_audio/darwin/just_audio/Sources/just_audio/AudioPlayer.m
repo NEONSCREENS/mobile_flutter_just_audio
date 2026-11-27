@@ -41,6 +41,7 @@
     FlutterResult _loadResult;
     FlutterResult _playResult;
     id _timeObserver;
+    NSTimer *_positionTimer;
     BOOL _automaticallyWaitsToMinimizeStalling;
     BOOL _allowsExternalPlayback;
     LoadControl *_loadControl;
@@ -885,7 +886,12 @@
             }
             switch (status) {
                 case AVPlayerTimeControlStatusPaused:
-                    //NSLog(@"AVPlayerTimeControlStatusPaused");
+                    // iOS paused the player itself while Dart still reads
+                    // playing: send the real position, so Dart sees it stop.
+                    if (_playing && _processingState != psCompleted && !CMTIME_IS_VALID(_seekPos)) {
+                        [self updatePosition];
+                        [self broadcastPlaybackEvent];
+                    }
                     break;
                 case AVPlayerTimeControlStatusWaitingToPlayAtSpecifiedRate:
                     //NSLog(@"AVPlayerTimeControlStatusWaitingToPlayAtSpecifiedRate");
@@ -1048,6 +1054,7 @@
     _playing = YES;
     _player.rate = _speed;
     [self updatePosition];
+    [self startPositionTimer];
     if (@available(macOS 10.12, iOS 10.0, *)) {}
     else {
         if (_bufferUnconfirmed && !_player.currentItem.playbackBufferFull) {
@@ -1057,9 +1064,31 @@
     }
 }
 
+// The real position every 5 s while playing. Without it Dart only guesses the
+// position, and a player that is silent but counts as playing looks fine.
+- (void)startPositionTimer {
+    [self stopPositionTimer];
+    __weak __typeof__(self) weakSelf = self;
+    _positionTimer = [NSTimer scheduledTimerWithTimeInterval:5.0 repeats:YES block:^(NSTimer *timer) {
+        [weakSelf broadcastRealPosition];
+    }];
+}
+
+- (void)stopPositionTimer {
+    [_positionTimer invalidate];
+    _positionTimer = nil;
+}
+
+- (void)broadcastRealPosition {
+    if (!_playing || _processingState != psReady || CMTIME_IS_VALID(_seekPos)) return;
+    [self updatePosition];
+    [self broadcastPlaybackEvent];
+}
+
 - (void)pause {
     if (!_playing) return;
     _playing = NO;
+    [self stopPositionTimer];
     [_player pause];
     [self updatePosition];
     [self broadcastPlaybackEvent];
@@ -1342,6 +1371,7 @@
 }
 
 - (void)dispose:(BOOL)calledFromDealloc {
+    [self stopPositionTimer];
     if (!_player) return;
     if (_processingState != psIdle) {
         [_player pause];
